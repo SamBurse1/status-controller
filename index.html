@@ -2,15 +2,10 @@
 <html>
 <head>
   <title>Status Controller</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"></script>
-
   <style>
     body {
       margin: 0;
-      background: #0a0a0a;
+      background: #0f0f0f;
       font-family: -apple-system, BlinkMacSystemFont, sans-serif;
       color: white;
       text-align: center;
@@ -18,83 +13,101 @@
 
     h1 {
       margin-top: 40px;
-      font-weight: 600;
+      font-weight: 500;
+      letter-spacing: 1px;
     }
 
-    .status-display {
-      font-size: 22px;
-      margin: 20px 0;
-      opacity: 0.8;
-    }
-
-    .grid {
+    .container {
+      margin-top: 40px;
       display: grid;
-      grid-template-columns: 1fr;
-      gap: 15px;
-      max-width: 400px;
-      margin: 40px auto;
-      padding: 0 20px;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 20px;
+      padding: 40px;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
     }
 
     button {
-      padding: 18px;
-      font-size: 18px;
-      border-radius: 12px;
+      padding: 20px;
+      border-radius: 16px;
       border: none;
+      font-size: 16px;
       font-weight: 600;
       cursor: pointer;
-      transition: 0.2s;
+      transition: transform 0.15s ease, opacity 0.2s ease;
     }
 
     button:hover {
-      transform: scale(1.03);
+      transform: scale(1.05);
+      opacity: 0.9;
     }
 
-    .green { background: #00ff55; color: black; }
-    .red { background: #ff2b2b; }
-    .white { background: #f5f5f5; color: black; }
-    .blue { background: #2da8ff; }
-    .purple { background: #a259ff; }
+    .green { background: #16a34a; }
+    .red { background: #dc2626; }
+    .white { background: white; color: black; }
+    .blue { background: #2563eb; }
+    .purple { background: #7c3aed; }
+    .yellow { background: #facc15; color: black; }
+
+    #logout {
+      margin-top: 30px;
+      background: #333;
+    }
+
+    #login {
+      margin-top: 100px;
+    }
 
     input {
       padding: 12px;
+      margin: 10px;
       border-radius: 8px;
       border: none;
-      margin: 6px;
-      width: 250px;
-    }
-
-    .login-box {
-      margin-top: 60px;
+      width: 200px;
     }
   </style>
 </head>
-
 <body>
 
 <h1>Status Controller</h1>
 
-<div id="loginSection" class="login-box">
-  <input id="email" placeholder="Email"><br>
-  <input id="password" type="password" placeholder="Password"><br>
-  <button onclick="login()">Login</button>
+<div id="login">
+  <input id="email" type="email" placeholder="Email">
+  <input id="password" type="password" placeholder="Password">
+  <br>
+  <button id="loginBtn">Login</button>
+  <p id="error"></p>
 </div>
 
-<div id="appSection" style="display:none;">
-  <div class="status-display">
-    Current Status: <span id="currentStatus">Loading...</span>
-  </div>
-
-  <div class="grid">
+<div id="controller" style="display:none;">
+  <div class="container">
     <button class="green" onclick="setStatus('AVAILABLE')">AVAILABLE</button>
     <button class="red" onclick="setStatus('ON CALL')">ON CALL</button>
     <button class="white" onclick="setStatus('IN A MEETING')">IN A MEETING</button>
     <button class="blue" onclick="setStatus('AT LUNCH')">AT LUNCH</button>
     <button class="purple" onclick="setStatus('OUT OF OFFICE')">OUT OF OFFICE</button>
+    <button class="yellow" onclick="setStatus('STEPPED AWAY')">STEPPED AWAY</button>
   </div>
+
+  <button id="logout">Logout</button>
 </div>
 
-<script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { 
+    getAuth, 
+    signInWithEmailAndPassword, 
+    onAuthStateChanged,
+    signOut
+  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { 
+    getFirestore, 
+    doc, 
+    updateDoc, 
+    serverTimestamp 
+  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
   const firebaseConfig = {
   apiKey: "AIzaSyAS47IV6y3Hnvd2RmZXEbR7oZ7E4NVWEuQ",
   authDomain: "statusboard-4a367.firebaseapp.com",
@@ -103,24 +116,46 @@
   messagingSenderId: "887719960500",
   appId: "1:887719960500:web:9b2f41c85d2a02e7cb9ce1"
 };
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
-  firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const db = firebase.firestore();
+  const loginDiv = document.getElementById("login");
+  const controllerDiv = document.getElementById("controller");
 
-  function login() {
-    auth.signInWithEmailAndPassword(
-      document.getElementById("email").value,
-      document.getElementById("password").value
-    ).catch(alert);
-  }
+  document.getElementById("loginBtn").addEventListener("click", async () => {
+    try {
+      await signInWithEmailAndPassword(
+        auth,
+        document.getElementById("email").value,
+        document.getElementById("password").value
+      );
+    } catch (error) {
+      document.getElementById("error").innerText = error.message;
+    }
+  });
 
-  auth.onAuthStateChanged(user => {
+  document.getElementById("logout").addEventListener("click", () => {
+    signOut(auth);
+  });
+
+  onAuthStateChanged(auth, user => {
     if (user) {
-      document.getElementById("loginSection").style.display = "none";
-      document.getElementById("appSection").style.display = "block";
+      loginDiv.style.display = "none";
+      controllerDiv.style.display = "block";
+    } else {
+      loginDiv.style.display = "block";
+      controllerDiv.style.display = "none";
+    }
+  });
 
-      db.collection("status").doc("main")
-        .onSnapshot(doc => {
-          document.getElementById("currentStatus").innerText =
-            doc.data().currentS
+  window.setStatus = async function(status) {
+    await updateDoc(doc(db, "status", "main"), {
+      currentStatus: status,
+      updatedAt: serverTimestamp()
+    });
+  };
+</script>
+
+</body>
+</html>
